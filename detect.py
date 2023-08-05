@@ -99,10 +99,10 @@ def detect(original_image, min_score, max_overlap, top_k, suppress=None):
 
 if __name__ == '__main__':
     os.makedirs('detected_images', exist_ok=True)
-    img_path = r'S2TLD_720x1280/normal_2/JPEGImages/000888.jpg'
+    img_path = r'S2TLD_720x1280/normal_2/JPEGImages/002385.jpg'
     img_name = img_path.split('/')[-1]
     original_image = Image.open(img_path, mode='r')
     original_image = original_image.convert('RGB')
-    new_image = detect(original_image, min_score=0.2, max_overlap=0.5, top_k=200)
+    new_image = detect(original_image, min_score=0.2, max_overlap=0.2, top_k=200)
     new_image.save(f'detected_images/{img_name}.jpeg')
     new_image.show()

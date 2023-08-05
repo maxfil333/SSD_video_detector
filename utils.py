@@ -13,7 +13,7 @@ label_map = {c: i for i, c in enumerate(CLASSES)}
 rev_label_map = {i: c for c, i in label_map.items()}
 
 # Color map for bounding boxes of detected objects
-distinct_colors = ['#052a06', '#fd0000', '#ff9d00', '#0be65c', '#696969']
+distinct_colors = ['#052a06', '#fd0000', '#ff9d00', '#0be65c', '#3399FF']
 label_color_map = {k: distinct_colors[i] for i, k in enumerate(label_map.keys())}
 
 
