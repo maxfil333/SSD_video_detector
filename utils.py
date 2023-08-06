@@ -43,8 +43,8 @@ def create_data_lists(path, output_folder='./'):
     # ------------------Training data------------------
     n_objects = 0
 
-    train_images_path = os.path.join(path, 'normal_1/JPEGImages')
-    train_anno_path = os.path.join(path, 'normal_1/Annotations')
+    train_images_path = os.path.join(path, 'normal_2/JPEGImages')
+    train_anno_path = os.path.join(path, 'normal_2/Annotations')
 
     train_images = list(map(lambda x: os.path.join(train_images_path, x), os.listdir(train_images_path)))
     train_anno = list(map(lambda x: os.path.join(train_anno_path, x), os.listdir(train_anno_path)))
@@ -71,8 +71,8 @@ def create_data_lists(path, output_folder='./'):
 
     n_objects = 0
 
-    test_images_path = os.path.join(path, 'normal_2/JPEGImages')
-    test_anno_path = os.path.join(path, 'normal_2/Annotations')
+    test_images_path = os.path.join(path, 'normal_1/JPEGImages')
+    test_anno_path = os.path.join(path, 'normal_1/Annotations')
 
     test_images = list(map(lambda x: os.path.join(test_images_path, x), os.listdir(test_images_path)))
     test_anno = list(map(lambda x: os.path.join(test_anno_path, x), os.listdir(test_anno_path)))
