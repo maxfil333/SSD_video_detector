@@ -17,17 +17,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
 checkpoint = None  # path to model checkpoint, None if none
-batch_size = 16  # batch size
+batch_size = 32  # batch size
 iterations = 600  # number of iterations to train
 workers = 4  # number of workers for loading data in the DataLoader
-print_freq = 200  # print training status every __ batches
+print_freq = 64  # print training status every __ batches
 lr = 1e-3  # learning rate
-decay_lr_at = [80000, 100000]  # decay learning rate after these many iterations
-decay_lr_to = 0.1  # decay learning rate to this fraction of the existing learning rate
 momentum = 0.9  # momentum
 weight_decay = 5e-4  # weight decay
 grad_clip = None  # clip if gradients are exploding, which may happen at larger batch sizes (sometimes at 32) - you will recognize it by a sorting error in the MuliBox loss calculation
-epochs = 20
+epochs = 50
+decay_lr_at = [10, 20, 30, 40]  # decay learning rate after these many iterations
+decay_lr_to = 0.5  # decay learning rate to this fraction of the existing learning rate
 cudnn.benchmark = True
 
 
@@ -76,18 +76,28 @@ def main():
     # To convert iterations to epochs, divide iterations by the number of iterations per epoch
     # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
 
+    best_model_score = 1_000_000
     # Epochs
     for epoch in range(start_epoch, epochs):
 
+        # Decay learning rate at particular epochs
+        if epoch in decay_lr_at:
+            adjust_learning_rate(optimizer, decay_lr_to)
+            print('LR:', optimizer.param_groups[0]['lr'])
+
         # One epoch's training
-        train(train_loader=train_loader,
-              model=model,
-              criterion=criterion,
-              optimizer=optimizer,
-              epoch=epoch)
+        model_score = train(train_loader=train_loader,
+                            model=model,
+                            criterion=criterion,
+                            optimizer=optimizer,
+                            epoch=epoch)
 
         # Save checkpoint
-        save_checkpoint(epoch, model, optimizer)
+        if model_score < best_model_score:
+            best_model_score = model_score
+            print(f'New best model. avg loss: {best_model_score}')
+            save_checkpoint(epoch, model, optimizer)
+
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -148,6 +158,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                                                                   batch_time=batch_time,
                                                                   data_time=data_time, loss=losses))
     del predicted_locs, predicted_scores, images, boxes, labels  # free some memory since their histories may be stored
+    return losses.avg
 
 
 if __name__ == '__main__':
