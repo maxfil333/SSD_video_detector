@@ -13,6 +13,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Label map
 CLASSES = ['__background__', 'red', 'yellow', 'green', 'off']
+class_weights = torch.tensor([1.0, 1.0, 10.0, 1.0, 10.0])
 label_map = {c: i for i, c in enumerate(CLASSES)}
 rev_label_map = {i: c for c, i in label_map.items()}
 
@@ -641,15 +642,17 @@ def accuracy(scores, targets, k):
     return correct_total.item() * (100.0 / batch_size)
 
 
-def save_checkpoint(epoch, model, optimizer):
+def save_checkpoint(epoch, model, optimizer, val_map):
     """
     Save model checkpoint.
 
     :param epoch: epoch number
     :param model: model
     :param optimizer: optimizer
+    :param val_map: mAP on validation data
     """
     state = {'epoch': epoch,
+             'val_mAP': val_map,
              'model': model,
              'optimizer': optimizer}
     filename = 'checkpoint_ssd300.pth.tar'
