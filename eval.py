@@ -2,6 +2,7 @@ from utils import *
 from datasets import PascalVOCDataset
 from tqdm import tqdm
 from pprint import PrettyPrinter
+import random
 
 # Good formatting when printing the APs for each class and mAP
 pp = PrettyPrinter()
@@ -9,31 +10,32 @@ pp = PrettyPrinter()
 # Parameters
 data_folder = './'
 keep_difficult = True  # difficult ground truth objects must always be considered in mAP calculation, because these objects DO exist!
-batch_size = 64
-workers = 4
+batch_size = 16
+workers = 6
+val_size = 100  # размер выборки на валидации
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = './checkpoint_ssd300.pth.tar'
 
-# Load model checkpoint that is to be evaluated
-checkpoint = torch.load(checkpoint)
-model = checkpoint['model']
-model = model.to(device)
 
-# Switch to eval mode
-model.eval()
+def random_half_sampler(dataset_length):
+    new_length = val_size
+    indices = random.sample(range(dataset_length), new_length)
+    return indices
+
 
 # Load test data
 test_dataset = PascalVOCDataset(data_folder,
                                 split='test',
                                 keep_difficult=keep_difficult)
+
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                                          collate_fn=test_dataset.collate_fn, num_workers=workers, pin_memory=True)
+                                          collate_fn=test_dataset.collate_fn, num_workers=workers,
+                                          sampler=random_half_sampler(len(test_dataset)), pin_memory=True)
 
 
 def evaluate(test_loader, model):
     """
     Evaluate.
-
     :param test_loader: DataLoader for test data
     :param model: model
     """
@@ -61,7 +63,8 @@ def evaluate(test_loader, model):
             det_boxes_batch, det_labels_batch, det_scores_batch = model.detect_objects(predicted_locs, predicted_scores,
                                                                                        min_score=0.01, max_overlap=0.45,
                                                                                        top_k=200)
-            # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200 for fair comparision with the paper's results and other repos
+            # Evaluation MUST be at min_score=0.01, max_overlap=0.45,
+            # top_k=200 for fair comparison with the paper's results and other repos
 
             # Store this batch's results for mAP calculation
             boxes = [b.to(device) for b in boxes]
@@ -82,7 +85,14 @@ def evaluate(test_loader, model):
     pp.pprint(APs)
 
     print('\nMean Average Precision (mAP): %.3f' % mAP)
+    return mAP
 
 
 if __name__ == '__main__':
+    checkpoint = torch.load(checkpoint)
+
+    model = checkpoint['model']
+    model = model.to(device)
+    model.eval()
+
     evaluate(test_loader, model)
