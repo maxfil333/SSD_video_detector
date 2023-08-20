@@ -5,6 +5,7 @@ import torch.utils.data
 from model import SSD300, MultiBoxLoss
 from datasets import PascalVOCDataset
 from utils import *
+from eval import test_loader, evaluate
 
 # Data parameters
 data_folder = './'  # folder with data files
@@ -16,17 +17,17 @@ n_classes = len(label_map)  # number of different types of objects
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
-checkpoint = None  # path to model checkpoint, None if none
-batch_size = 32  # batch size
+checkpoint = 'checkpoint_ssd300.pth.tar'  # path to model checkpoint, None if none
+batch_size = 16  # batch size
 iterations = 600  # number of iterations to train
-workers = 4  # number of workers for loading data in the DataLoader
-print_freq = 64  # print training status every __ batches
-lr = 1e-3  # learning rate
+workers = 6  # number of workers for loading data in the DataLoader
+print_freq = 16  # print training status every __ batches
+lr = 1e-4  # learning rate
 momentum = 0.9  # momentum
 weight_decay = 5e-4  # weight decay
 # clip if gradients are exploding, which may happen at larger batch sizes (sometimes at 32)...
 # ... - you will recognize it by a sorting error in the MultiBox loss calculation
-grad_clip = None
+grad_clip = 5
 epochs = 50
 decay_lr_at = [10, 20, 30, 40]  # decay learning rate after these many iterations
 decay_lr_to = 0.5  # decay learning rate to this fraction of the existing learning rate
@@ -78,7 +79,7 @@ def main():
     # To convert iterations to epochs, divide iterations by the number of iterations per epoch
     # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
 
-    best_model_score = 1_000_000
+    best_mAP = 0
     # Epochs
     for epoch in range(start_epoch, epochs):
 
@@ -94,10 +95,13 @@ def main():
                             optimizer=optimizer,
                             epoch=epoch)
 
+        mAP_val = evaluate(test_loader, model)
+
         # Save checkpoint
-        if model_score < best_model_score:
-            best_model_score = model_score
-            print(f'New best model. avg loss: {best_model_score}')
+        if mAP_val > best_mAP:
+            best_mAP = mAP_val
+            print(f'New best model. val mAP: {best_mAP}')
+            print(f'TRAIN LOSS: {model_score}')
             save_checkpoint(epoch, model, optimizer)
 
 
