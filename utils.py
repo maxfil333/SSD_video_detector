@@ -716,8 +716,8 @@ def aug_transform(image, boxes, labels, difficulties):
                              #          mask_value=None, rotate_method='largest_box', crop_border=False)
                              ]
 
-    transform = A.Compose(list_of_augmentations, bbox_params)
-    transformed = transform(image=new_image, bboxes=new_boxes, labels=new_labels)
+    albumentations_transform = A.Compose(list_of_augmentations, bbox_params)
+    transformed = albumentations_transform(image=new_image, bboxes=new_boxes, labels=new_labels)
 
     transformed_image = Image.fromarray(transformed['image'])
     transformed_bboxes = torch.FloatTensor(transformed['bboxes'])
