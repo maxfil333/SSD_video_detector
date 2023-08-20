@@ -5,6 +5,7 @@ from math import sqrt
 import torchvision
 from torchvision.models.vgg import VGG16_Weights
 
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -100,7 +101,7 @@ class VGGBase(nn.Module):
 
         # Pretrained VGG base
         pretrained_state_dict = torchvision.models.vgg16(weights=VGG16_Weights.DEFAULT).state_dict()
-        pretrained_param_names = list(pretrained_state_dict.keys()) # ['features.0.weight', 'features.0.bias' ... ]
+        pretrained_param_names = list(pretrained_state_dict.keys())  # ['features.0.weight', 'features.0.bias' ... ]
 
         # Transfer conv. parameters from pretrained model to current model
         for i, param in enumerate(param_names[:-4]):  # excluding conv6 and conv7 parameters
@@ -547,7 +548,7 @@ class MultiBoxLoss(nn.Module):
         self.alpha = alpha
 
         self.smooth_l1 = nn.L1Loss()  # *smooth* L1 loss in the paper; see Remarks section in the tutorial
-        self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
+        self.cross_entropy = nn.CrossEntropyLoss(weight=class_weights.to(device), reduce=False)
 
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
         """
