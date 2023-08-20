@@ -1,9 +1,13 @@
-import json
 import os
+import json
 import torch
+import numpy as np
 import random
+from PIL import Image
 import xml.etree.ElementTree as ET
 import torchvision.transforms.functional as FT
+import albumentations as A
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -182,6 +186,9 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
             this_image = det_class_images[d]  # (), scalar
 
             # Find objects in the same image with this class, their difficulties, and whether they have been detected before
+            true_class_boxes = true_class_boxes.to(device)
+            true_class_images = true_class_images.to(device)
+            this_image = this_image.to(device)
             object_boxes = true_class_boxes[true_class_images == this_image]  # (n_class_objects_in_img)
             object_difficulties = true_class_difficulties[true_class_images == this_image]  # (n_class_objects_in_img)
             # If no such object in this image, then the detection is a false positive
@@ -195,6 +202,9 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
             # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
             # In the original class-level tensors 'true_class_boxes', etc., 'ind' corresponds to object with index...
+            true_class_boxes = true_class_boxes.to('cpu')
+            true_class_images = true_class_images.to('cpu')
+            this_image = this_image.to('cpu')
             original_ind = torch.LongTensor(range(true_class_boxes.size(0)))[true_class_images == this_image][ind]
             # We need 'original_ind' to update 'true_class_boxes_detected'
 
@@ -565,10 +575,12 @@ def transform(image, boxes, labels, difficulties, split):
     new_boxes = boxes
     new_labels = labels
     new_difficulties = difficulties
+
     # Skip the following operations for evaluation/testing
     if split == 'TRAIN':
+        new_image, new_boxes, new_labels, new_difficulties = aug_transform(new_image, new_boxes, new_labels, new_difficulties)
         # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
-        new_image = photometric_distort(new_image)
+        # new_image = photometric_distort(new_image)
 
         # Convert PIL image to Torch tensor
         new_image = FT.to_tensor(new_image)
@@ -676,3 +688,41 @@ def clip_gradient(optimizer, grad_clip):
         for param in group['params']:
             if param.grad is not None:
                 param.grad.data.clamp_(-grad_clip, grad_clip)
+
+
+def aug_transform(image, boxes, labels, difficulties):
+    p = 0.5
+    bbox_params = A.BboxParams(format='pascal_voc', min_area=1, min_visibility=0.01, label_fields=['labels'])
+
+    new_image = np.array(image)
+    new_boxes = boxes.tolist()
+    new_labels = labels.tolist()
+    new_difficulties = difficulties.tolist()
+
+    list_of_augmentations = [A.HorizontalFlip(p=p),
+                             A.RandomBrightnessContrast(p=p, brightness_limit=(-0.30, 0.30),
+                                                        contrast_limit=(-0.30, 0.30)),
+                             A.Blur(p=p, blur_limit=6),
+                             # A.CLAHE(p=p, clip_limit=(1, 24), tile_grid_size=(8, 8), always_apply=False),
+                             # A.ISONoise(p=p, intensity=(0.1, 0.37), color_shift=(0.01, 0.20)),
+                             # A.ImageCompression(p=p, always_apply=False, quality_lower=20, quality_upper=70,
+                             #                    compression_type=0),
+                             A.MotionBlur(p=0.2, always_apply=False, blur_limit=(5, 19), allow_shifted=False),
+                             A.PixelDropout(p=0.1, dropout_prob=0.05, per_channel=0, drop_value=(0, 0, 0),
+                                            mask_drop_value=None),
+                             # A.RandomGamma(p=p, gamma_limit=(65, 135), eps=None),
+                             A.RandomSnow(p=0.1, snow_point_lower=0.1, snow_point_upper=0.2, brightness_coeff=2.0),
+                             # A.Rotate(p=p, limit=(-30, 30), interpolation=2, border_mode=0, value=(0, 0, 0),
+                             #          mask_value=None, rotate_method='largest_box', crop_border=False)
+                             ]
+
+    transform = A.Compose(list_of_augmentations, bbox_params)
+    transformed = transform(image=new_image, bboxes=new_boxes, labels=new_labels)
+
+    transformed_image = Image.fromarray(transformed['image'])
+    transformed_bboxes = torch.FloatTensor(transformed['bboxes'])
+    transformed_labels = torch.LongTensor(transformed['labels'])
+    transformed_difficulties = torch.ByteTensor(new_difficulties)[0:len(transformed_labels)]
+
+    return transformed_image, transformed_bboxes, transformed_labels, transformed_difficulties
+
