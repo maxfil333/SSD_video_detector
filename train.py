@@ -17,11 +17,11 @@ n_classes = len(label_map)  # number of different types of objects
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
-checkpoint = 'checkpoint_ssd300.pth.tar'  # path to model checkpoint, None if none
-batch_size = 16  # batch size
+checkpoint = None  # path to model checkpoint, None if none
+batch_size = 32  # batch size
 iterations = 600  # number of iterations to train
 workers = 6  # number of workers for loading data in the DataLoader
-print_freq = 16  # print training status every __ batches
+print_freq = 32  # print training status every __ batches
 lr = 1e-4  # learning rate
 momentum = 0.9  # momentum
 weight_decay = 5e-4  # weight decay
@@ -43,6 +43,7 @@ def main():
     # Initialize model or load checkpoint
     if checkpoint is None:
         start_epoch = 0
+        best_mAP = 0
         model = SSD300(n_classes=n_classes)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
@@ -59,6 +60,10 @@ def main():
     else:
         checkpoint = torch.load(checkpoint)
         start_epoch = checkpoint['epoch'] + 1
+
+        start_mAP = checkpoint.get('val_mAP', 0.2)
+        best_mAP = start_mAP
+
         print('\nLoaded checkpoint from epoch %d.\n' % start_epoch)
         model = checkpoint['model']
         optimizer = checkpoint['optimizer']
@@ -79,10 +84,9 @@ def main():
     # To convert iterations to epochs, divide iterations by the number of iterations per epoch
     # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
 
-    best_mAP = 0
+
     # Epochs
     for epoch in range(start_epoch, epochs):
-
         # Decay learning rate at particular epochs
         if epoch in decay_lr_at:
             adjust_learning_rate(optimizer, decay_lr_to)
@@ -102,7 +106,7 @@ def main():
             best_mAP = mAP_val
             print(f'New best model. val mAP: {best_mAP}')
             print(f'TRAIN LOSS: {model_score}')
-            save_checkpoint(epoch, model, optimizer)
+            save_checkpoint(epoch, model, optimizer, mAP_val)
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
