@@ -18,16 +18,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
 checkpoint = None  # path to model checkpoint, None if none
-batch_size = 32  # batch size
+batch_size = 16  # batch size
 iterations = 600  # number of iterations to train
 workers = 6  # number of workers for loading data in the DataLoader
-print_freq = 32  # print training status every __ batches
+print_freq = 16  # print training status every __ batches
 lr = 1e-4  # learning rate
 momentum = 0.9  # momentum
 weight_decay = 5e-4  # weight decay
 # clip if gradients are exploding, which may happen at larger batch sizes (sometimes at 32)...
 # ... - you will recognize it by a sorting error in the MultiBox loss calculation
-grad_clip = 5
+grad_clip = None
 epochs = 50
 decay_lr_at = [10, 20, 30, 40]  # decay learning rate after these many iterations
 decay_lr_to = 0.5  # decay learning rate to this fraction of the existing learning rate
@@ -61,7 +61,7 @@ def main():
         checkpoint = torch.load(checkpoint)
         start_epoch = checkpoint['epoch'] + 1
 
-        start_mAP = checkpoint.get('val_mAP', 0.2)
+        start_mAP = checkpoint.get('val_mAP', 0)
         best_mAP = start_mAP
 
         print('\nLoaded checkpoint from epoch %d.\n' % start_epoch)
@@ -79,11 +79,6 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                collate_fn=train_dataset.collate_fn, num_workers=workers,
                                                pin_memory=True)  # note that we're passing the collate function here
-
-    # Calculate total number of epochs to train and the epochs to decay l.r at (i.e. convert iterations to epochs)
-    # To convert iterations to epochs, divide iterations by the number of iterations per epoch
-    # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
-
 
     # Epochs
     for epoch in range(start_epoch, epochs):
