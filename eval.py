@@ -10,9 +10,9 @@ pp = PrettyPrinter()
 # Parameters
 data_folder = './'
 keep_difficult = True  # difficult ground truth objects must always be considered in mAP calculation, because these objects DO exist!
-batch_size = 32
+batch_size = 16
 workers = 6
-val_size = 64  # размер выборки на валидации
+val_size = 128  # размер выборки на валидации
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = './checkpoint_ssd300.pth.tar'
 
