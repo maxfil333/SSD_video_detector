@@ -17,7 +17,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = './checkpoint_ssd300.pth.tar'
 
 
-def random_half_sampler(dataset_length):
+def random_sampler(dataset_length):
     new_length = val_size
     indices = random.sample(range(dataset_length), new_length)
     return indices
@@ -30,7 +30,7 @@ test_dataset = PascalVOCDataset(data_folder,
 
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                                           collate_fn=test_dataset.collate_fn, num_workers=workers,
-                                          sampler=random_half_sampler(len(test_dataset)), pin_memory=True)
+                                          sampler=random_sampler(len(test_dataset)), pin_memory=True)
 
 
 def evaluate(test_loader, model):
