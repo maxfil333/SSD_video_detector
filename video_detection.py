@@ -7,10 +7,14 @@ from PIL import Image
 from detect import detect_image
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 makedirs('outputs', exist_ok=True)
-video_path = 'downloaded_videos/Рулим по ночному Лос Анджелесу Отличное качество.mp4'
-save_name = 'testsave1'
+
+# set parameters
+video_path = 'downloaded_videos/name_of_the_video.mp4'
+save_name = 'save_name'
+min_score = 0.4
+max_overlap = 0.1
+top_k = 200
 
 # Load model checkpoint
 checkpoint = 'checkpoint_ssd300.pth.tar'
@@ -21,9 +25,10 @@ model = checkpoint['model']
 model = model.to(device)
 model.eval()
 
+
 if __name__ == '__main__':
     cap = cv2.VideoCapture(video_path)
-    if (cap.isOpened() == False):
+    if not cap.isOpened():
         print('Error while trying to read video. Please check path again')
     # get the frame width, height and framerate
     framerate = int(round(cap.get(cv2.CAP_PROP_FPS)))
@@ -37,21 +42,19 @@ if __name__ == '__main__':
     frame_count = 0  # to count total frames
     total_fps = 0  # to get the final frames per second
     # read until end of video
-    while (cap.isOpened()):
+    while cap.isOpened():
         # capture each frame of the video
         ret, frame = cap.read()
-        if ret == True:
+        if ret:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image_in = Image.fromarray(frame).convert('RGB')
-            # pil_transformed_image = transform(pil_image_in).unsqueeze(0).to(device)
-            #
-            start_time = time.time()
-            # with torch.no_grad():
-            #     predictions = model(pil_transformed_image)[0]
-            #     print(predictions)
-            #     break
 
-            pil_image_out = detect_image(pil_image_in, min_score=0.2, max_overlap=0.2, top_k=200)
+            start_time = time.time()
+
+            pil_image_out = detect_image(pil_image_in,
+                                         min_score=min_score,
+                                         max_overlap=max_overlap,
+                                         top_k=top_k)
             end_time = time.time()
 
             # convert to NumPy array format
@@ -67,11 +70,7 @@ if __name__ == '__main__':
             # press `q` to exit
             wait_time = max(1, int(fps / 4))
             # write the FPS on current frame
-            cv2.putText(
-                result_np, f"{fps:.3f} FPS", (5, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255),
-                2
-            )
+            cv2.putText(result_np, f"{fps:.3f} FPS", (5, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
             cv2.imshow('Result', result_np)
             out.write(result_np)
             if cv2.waitKey(wait_time) & 0xFF == ord('q'):
