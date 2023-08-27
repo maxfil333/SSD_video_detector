@@ -7,19 +7,34 @@ from PIL import Image
 import xml.etree.ElementTree as ET
 import torchvision.transforms.functional as FT
 import albumentations as A
+from sklearn.utils.class_weight import compute_class_weight
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Label map
 CLASSES = ['__background__', 'red', 'yellow', 'green', 'off']
-class_weights = torch.tensor([1.0, 1.0, 10.0, 1.0, 10.0])
 label_map = {c: i for i, c in enumerate(CLASSES)}
 rev_label_map = {i: c for c, i in label_map.items()}
 
 # Color map for bounding boxes of detected objects
 distinct_colors = ['#052a06', '#fd0000', '#ff9d00', '#0be65c', '#3399FF']
 label_color_map = {k: distinct_colors[i] for i, k in enumerate(label_map.keys())}
+
+# class weights
+all_class_labels = []
+with open('TRAIN_objects.json', 'r') as file:
+    data = json.load(file)
+    for obj in data:
+        labels = obj['labels']
+        for label in labels:
+            all_class_labels.append(rev_label_map[label])
+
+class_weights = torch.tensor(compute_class_weight(class_weight='balanced',
+                                                  classes=CLASSES[1:],
+                                                  y=np.array(all_class_labels))).to(torch.float32)
+background_weight = torch.tensor([0.3], dtype=torch.float32)
+class_weights = torch.cat((background_weight, class_weights), 0)
 
 
 def parse_annotation(annotation_path):
@@ -478,26 +493,6 @@ def random_crop(image, boxes, labels, difficulties):
             return new_image, new_boxes, new_labels, new_difficulties
 
 
-def flip(image, boxes):
-    """
-    Flip image horizontally.
-
-    :param image: image, a PIL Image
-    :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
-    :return: flipped image, updated bounding box coordinates
-    """
-    # Flip image
-    new_image = FT.hflip(image)
-
-    # Flip boxes
-    new_boxes = boxes
-    new_boxes[:, 0] = image.width - boxes[:, 0] - 1
-    new_boxes[:, 2] = image.width - boxes[:, 2] - 1
-    new_boxes = new_boxes[:, [2, 1, 0, 3]]
-
-    return new_image, new_boxes
-
-
 def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
     """
     Resize image. For the SSD300, resize to (300, 300).
@@ -523,41 +518,9 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
     return new_image, new_boxes
 
 
-def photometric_distort(image):
-    """
-    Distort brightness, contrast, saturation, and hue, each with a 50% chance, in random order.
-
-    :param image: image, a PIL Image
-    :return: distorted image
-    """
-    new_image = image
-
-    distortions = [FT.adjust_brightness,
-                   FT.adjust_contrast,
-                   FT.adjust_saturation,
-                   FT.adjust_hue]
-
-    random.shuffle(distortions)
-
-    for d in distortions:
-        if random.random() < 0.5:
-            if d.__name__ == 'adjust_hue':
-                # Caffe repo uses a 'hue_delta' of 18 - we divide by 255 because PyTorch needs a normalized value
-                adjust_factor = random.uniform(-18 / 255., 18 / 255.)
-            else:
-                # Caffe repo uses 'lower' and 'upper' values of 0.5 and 1.5 for brightness, contrast, and saturation
-                adjust_factor = random.uniform(0.5, 1.5)
-
-            # Apply this distortion
-            new_image = d(new_image, adjust_factor)
-
-    return new_image
-
-
 def transform(image, boxes, labels, difficulties, split):
     """
     Apply the transformations above.
-
     :param image: image, a PIL Image
     :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
     :param labels: labels of objects, a tensor of dimensions (n_objects)
@@ -579,28 +542,14 @@ def transform(image, boxes, labels, difficulties, split):
 
     # Skip the following operations for evaluation/testing
     if split == 'TRAIN':
-        new_image, new_boxes, new_labels, new_difficulties = aug_transform(new_image, new_boxes, new_labels, new_difficulties)
-        # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
-        # new_image = photometric_distort(new_image)
+        new_image, new_boxes, new_labels, new_difficulties = aug_transform(new_image, new_boxes, new_labels,
+                                                                           new_difficulties)
 
         # Convert PIL image to Torch tensor
         new_image = FT.to_tensor(new_image)
 
-        # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
-        # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
-        if random.random() < 0.5:
-            new_image, new_boxes = expand(new_image, boxes, filler=mean)
-
-        # Randomly crop image (zoom in)
-        new_image, new_boxes, new_labels, new_difficulties = random_crop(new_image, new_boxes, new_labels,
-                                                                         new_difficulties)
-
         # Convert Torch tensor to PIL image
         new_image = FT.to_pil_image(new_image)
-
-        # Flip image with a 50% chance
-        if random.random() < 0.5:
-            new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
     new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))
@@ -705,18 +654,16 @@ def aug_transform(image, boxes, labels, difficulties):
     list_of_augmentations = [A.HorizontalFlip(p=p),
                              A.RandomBrightnessContrast(p=p, brightness_limit=(-0.30, 0.30),
                                                         contrast_limit=(-0.30, 0.30)),
-                             A.Blur(p=p, blur_limit=6),
-                             # A.CLAHE(p=p, clip_limit=(1, 24), tile_grid_size=(8, 8), always_apply=False),
-                             # A.ISONoise(p=p, intensity=(0.1, 0.37), color_shift=(0.01, 0.20)),
-                             # A.ImageCompression(p=p, always_apply=False, quality_lower=20, quality_upper=70,
-                             #                    compression_type=0),
+                             A.Blur(p=0.3, blur_limit=(1, 6)),
+                             A.CLAHE(p=0.3, clip_limit=(1, 24), tile_grid_size=(8, 8), always_apply=False),
+                             A.ISONoise(p=0.2, intensity=(0.1, 0.37), color_shift=(0.01, 0.20)),
+                             A.ImageCompression(p=0.1, always_apply=False, quality_lower=20, quality_upper=70,
+                                                compression_type=0),
                              A.MotionBlur(p=0.2, always_apply=False, blur_limit=(5, 19), allow_shifted=False),
                              A.PixelDropout(p=0.1, dropout_prob=0.05, per_channel=0, drop_value=(0, 0, 0),
                                             mask_drop_value=None),
-                             # A.RandomGamma(p=p, gamma_limit=(65, 135), eps=None),
-                             A.RandomSnow(p=0.1, snow_point_lower=0.1, snow_point_upper=0.2, brightness_coeff=2.0),
-                             # A.Rotate(p=p, limit=(-30, 30), interpolation=2, border_mode=0, value=(0, 0, 0),
-                             #          mask_value=None, rotate_method='largest_box', crop_border=False)
+                             A.RandomGamma(p=0.4, gamma_limit=(65, 135), eps=None),
+                             A.RandomSnow(p=0.1, snow_point_lower=0.1, snow_point_upper=0.2, brightness_coeff=2.0)
                              ]
 
     albumentations_transform = A.Compose(list_of_augmentations, bbox_params)
@@ -728,4 +675,3 @@ def aug_transform(image, boxes, labels, difficulties):
     transformed_difficulties = torch.ByteTensor(new_difficulties)[0:len(transformed_labels)]
 
     return transformed_image, transformed_bboxes, transformed_labels, transformed_difficulties
-
